@@ -72,7 +72,7 @@ export default function Game() {
   const [nodes, setNodes] = useState<Node[]>([]);
   
   const [players, setPlayers] = useState<PlayerState[]>([
-    { faction: 'PIGEON', classId: '', resources: 0, currentNodeId: 'balcony-tl', inventory: {}, initiative: 0 },
+    { faction: 'PIGEON', classId: '', resources: 0, currentNodeId: 'balcony-0-entry', inventory: {}, initiative: 0 },
     { faction: 'HUMAN', classId: '', resources: 5, currentNodeId: 'road-bottom', inventory: {}, initiative: 0 }
   ]);
 
@@ -97,7 +97,7 @@ export default function Game() {
     setNodes(map);
     
     setPlayers([
-        { faction: 'PIGEON', classId: pigeonClass, resources: 0, currentNodeId: 'balcony-tl', inventory: {}, initiative: 0 },
+        { faction: 'PIGEON', classId: pigeonClass, resources: 0, currentNodeId: 'balcony-0-entry', inventory: {}, initiative: 0 },
         { faction: 'HUMAN', classId: humanClass, resources: 5, currentNodeId: 'road-bottom', inventory: {}, initiative: 0 }
     ]);
     
@@ -225,25 +225,25 @@ export default function Game() {
 
   const buildNest = () => {
       const node = nodes.find(n => n.id === currentPlayer.currentNodeId)!;
-      if (node.type !== 'BALCONY') return;
-      if (node.structures.length >= node.maxStructures) { addLog("Balcony full!", currentPlayer.faction); return; }
+      if (node.type !== 'BALCONY_SLOT') { addLog("Must be in a balcony slot!", currentPlayer.faction); return; }
+      if (node.structure) { addLog("Space occupied!", currentPlayer.faction); return; }
 
       const cls = CLASSES.find(c => c.id === currentPlayer.classId)!;
       const cost = cls.id === 'chonk' ? 1 : 2;
 
       performAction("Built Nest", cost, () => {
-          setNodes(prev => prev.map(n => n.id === node.id ? { ...n, structures: [...n.structures, { type: 'NEST', owner: 'PIGEON' }] } : n));
+          setNodes(prev => prev.map(n => n.id === node.id ? { ...n, structure: { type: 'NEST', owner: 'PIGEON' } } : n));
           checkWin();
       });
   };
 
   const placeProp = () => {
       const node = nodes.find(n => n.id === currentPlayer.currentNodeId)!;
-      if (node.type !== 'BALCONY') return;
-      if (node.structures.length >= node.maxStructures) { addLog("Balcony full!", currentPlayer.faction); return; }
+      if (node.type !== 'BALCONY_SLOT') { addLog("Must be in a balcony slot!", currentPlayer.faction); return; }
+      if (node.structure) { addLog("Space occupied!", currentPlayer.faction); return; }
 
       performAction("Placed Prop", 2, () => {
-          setNodes(prev => prev.map(n => n.id === node.id ? { ...n, structures: [...n.structures, { type: 'PROP', owner: 'HUMAN' }] } : n));
+          setNodes(prev => prev.map(n => n.id === node.id ? { ...n, structure: { type: 'PROP', owner: 'HUMAN' } } : n));
       });
   };
 
@@ -260,10 +260,8 @@ export default function Game() {
 
   const destroyNest = () => {
       const node = nodes.find(n => n.id === currentPlayer.currentNodeId)!;
-      if (node.type !== 'BALCONY') return;
-      
-      const nestIndex = node.structures.findIndex(s => s.type === 'NEST');
-      if (nestIndex === -1) { addLog("No nest here.", currentPlayer.faction); return; }
+      if (node.type !== 'BALCONY_SLOT') return;
+      if (node.structure?.type !== 'NEST') { addLog("No nest here.", currentPlayer.faction); return; }
 
       if (!currentPlayer.inventory.vacuum) {
           addLog("Need Vacuum Cleaner to destroy nests!", currentPlayer.faction);
@@ -271,19 +269,41 @@ export default function Game() {
       }
 
       performAction("Vacuumed Nest", 0, () => {
-          setNodes(prev => prev.map(n => {
-              if (n.id !== node.id) return n;
-              const newStructures = [...n.structures];
-              newStructures.splice(nestIndex, 1);
-              return { ...n, structures: newStructures };
-          }));
+          setNodes(prev => prev.map(n => n.id === node.id ? { ...n, structure: undefined } : n));
+          
+          // Reduce durability
+          const newPlayers = [...players];
+          const vac = newPlayers[gameState.turnIndex].inventory.vacuum!;
+          vac.turnsLeft--;
+          if (vac.turnsLeft <= 0) {
+              delete newPlayers[gameState.turnIndex].inventory.vacuum;
+              addLog("Vacuum broke!", currentPlayer.faction);
+          }
+          setPlayers(newPlayers);
+      });
+  };
+
+  const placeSpikes = () => {
+      const node = nodes.find(n => n.id === currentPlayer.currentNodeId)!;
+      if (node.type !== 'BALCONY_SLOT') { addLog("Must be in a balcony slot!", currentPlayer.faction); return; }
+      if (node.structure) { addLog("Space occupied!", currentPlayer.faction); return; }
+
+      performAction("Placed Spikes", 1, () => {
+          setNodes(prev => prev.map(n => n.id === node.id ? { ...n, structure: { type: 'SPIKES', owner: 'HUMAN' } } : n));
       });
   };
 
   const checkWin = () => {
-      // Win condition: 3 nests on a single balcony
-      const winningBalcony = nodes.find(n => n.type === 'BALCONY' && n.structures.filter(s => s.type === 'NEST').length >= 3);
-      if (winningBalcony) {
+      // Check if any balcony has 3 nests
+      // Group nodes by balconyId
+      const balconyCounts: Record<number, number> = {};
+      nodes.forEach(n => {
+          if (n.type === 'BALCONY_SLOT' && n.structure?.type === 'NEST' && n.balconyId !== undefined) {
+              balconyCounts[n.balconyId] = (balconyCounts[n.balconyId] || 0) + 1;
+          }
+      });
+      
+      if (Object.values(balconyCounts).some(count => count >= 3)) {
           setGameState(prev => ({ ...prev, phase: 'GAME_OVER', winner: 'PIGEON' }));
       }
   };
@@ -384,26 +404,44 @@ export default function Game() {
         
         {/* Map */}
         <div className="flex-1 bg-stone-200 rounded-3xl border-4 border-stone-300 shadow-inner relative overflow-hidden">
+            {/* Background Texture */}
+            <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+
+            {/* Balcony Containers (Visual) */}
+            {[0, 1, 2, 3].map(id => {
+                // Hardcoded positions based on generateMap logic for simplicity
+                const positions = [
+                    { left: '15%', top: '15%', width: '30%', height: '30%' }, // TL (approx)
+                    { left: '55%', top: '15%', width: '30%', height: '30%' }, // TR
+                    { left: '15%', top: '55%', width: '30%', height: '30%' }, // BL
+                    { left: '55%', top: '55%', width: '30%', height: '30%' }, // BR
+                ];
+                return (
+                    <div key={id} className="absolute bg-white/50 border-2 border-stone-400 rounded-3xl" style={positions[id]}>
+                        <span className="absolute -top-3 left-4 bg-stone-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">Balcony {id + 1}</span>
+                    </div>
+                );
+            })}
+
             {/* SVG Layer for Connections */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
                 {nodes.map(node => 
                     node.connections.map(targetId => {
                         const target = nodes.find(n => n.id === targetId)!;
-                        // Only draw if target index > node index to avoid double drawing
                         if (node.id > target.id) return null;
                         
                         const isWire = node.type === 'WIRE' || target.type === 'WIRE';
+                        const isBalconyPath = node.type.includes('BALCONY') && target.type.includes('BALCONY');
                         
                         return (
                             <line 
                                 key={`${node.id}-${target.id}`}
                                 x1={`${node.x}%`} y1={`${node.y}%`}
                                 x2={`${target.x}%`} y2={`${target.y}%`}
-                                stroke={isWire ? "black" : "#666"}
-                                strokeWidth={isWire ? "2" : "8"}
-                                strokeDasharray={isWire ? "0" : "0"}
+                                stroke={isWire ? "black" : isBalconyPath ? "#d6d3d1" : "#666"}
+                                strokeWidth={isWire ? "2" : isBalconyPath ? "12" : "8"}
                                 strokeLinecap="round"
-                                className="opacity-50"
+                                className={isBalconyPath ? "" : "opacity-50"}
                             />
                         );
                     })
@@ -413,37 +451,36 @@ export default function Game() {
             {/* Nodes */}
             {nodes.map(node => {
                 const isTarget = validMoveTargets.includes(node.id);
-                const isBalcony = node.type === 'BALCONY';
+                const isEntry = node.type === 'BALCONY_ENTRY';
+                const isSlot = node.type === 'BALCONY_SLOT';
                 const isVan = node.type === 'VAN';
                 
                 return (
                     <motion.div
                         key={node.id}
                         className={`absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center
-                            ${isBalcony ? 'w-16 h-16 rounded-2xl bg-white border-2 border-stone-400 shadow-md' : ''}
+                            ${isEntry ? 'w-8 h-8 rounded-full bg-stone-300 border-2 border-stone-500' : ''}
+                            ${isSlot ? 'w-10 h-10 rounded-md bg-white border-2 border-stone-300 shadow-sm' : ''}
                             ${isVan ? 'w-12 h-12 rounded-full bg-blue-100 border-2 border-blue-500 shadow-md' : ''}
-                            ${node.type === 'WIRE' ? 'w-4 h-4 rounded-full bg-black' : ''}
+                            ${node.type === 'WIRE' ? 'w-3 h-3 rounded-full bg-black' : ''}
                             ${node.type === 'ROAD' ? 'w-6 h-6 rounded-full bg-stone-400' : ''}
-                            ${isTarget ? 'ring-4 ring-green-400 cursor-pointer z-20' : ''}
+                            ${isTarget ? 'ring-4 ring-green-400 cursor-pointer z-20 scale-110' : ''}
                         `}
                         style={{ left: `${node.x}%`, top: `${node.y}%` }}
                         onClick={() => handleNodeClick(node.id)}
                         whileHover={isTarget ? { scale: 1.2 } : {}}
                     >
-                        {isBalcony && <span className="text-[10px] font-bold absolute -top-4 bg-stone-600 text-white px-1 rounded">Balcony</span>}
                         {isVan && <ShoppingBag size={16} className="text-blue-600" />}
-                        {node.resource && <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse absolute" />}
+                        {node.resource && <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse absolute z-10" />}
                         
                         {/* Structures */}
-                        <div className="absolute inset-0 flex flex-wrap items-center justify-center gap-1 p-1">
-                            {node.structures.map((s, i) => (
-                                <div key={i} className="w-4 h-4 md:w-6 md:h-6">
-                                    {s.type === 'NEST' && <Home className="text-terracotta w-full h-full" />}
-                                    {s.type === 'PROP' && <Hammer className="text-teal-dark w-full h-full" />}
-                                    {s.type === 'SPIKES' && <Skull className="text-gray-600 w-full h-full" />}
-                                </div>
-                            ))}
-                        </div>
+                        {node.structure && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                {node.structure.type === 'NEST' && <Home className="text-terracotta w-6 h-6" />}
+                                {node.structure.type === 'PROP' && <Hammer className="text-teal-dark w-6 h-6" />}
+                                {node.structure.type === 'SPIKES' && <Skull className="text-gray-600 w-6 h-6" />}
+                            </div>
+                        )}
                     </motion.div>
                 );
             })}

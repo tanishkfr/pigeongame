@@ -1,19 +1,20 @@
 export type Faction = 'HUMAN' | 'PIGEON';
 
-export type NodeType = 'BALCONY' | 'WIRE' | 'ROAD' | 'VAN';
+export type NodeType = 'BALCONY_ENTRY' | 'BALCONY_SLOT' | 'WIRE' | 'ROAD' | 'VAN';
 
 export interface Node {
   id: string;
   type: NodeType;
-  x: number; // Percentage 0-100 for responsive layout
+  x: number; // Percentage 0-100
   y: number; // Percentage 0-100
-  connections: string[]; // IDs of connected nodes
-  resource?: boolean; // Does it have straw/currency?
-  structures: {
+  connections: string[]; 
+  resource?: boolean;
+  structure?: {
     type: 'NEST' | 'PROP' | 'SPIKES';
     owner: Faction;
-  }[];
-  maxStructures: number;
+  };
+  // Visual grouping
+  balconyId?: number; 
 }
 
 export interface PlayerClass {
