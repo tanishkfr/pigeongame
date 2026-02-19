@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  /* Indian Urban Palette */
+  --color-terracotta: #E07A5F;
+  --color-turmeric: #F2CC8F;
+  --color-teal-dark: #3D405B;
+  --color-sage: #81B29A;
+  --color-off-white: #F4F1DE;
+  --color-chai: #D4A373;
+}
+
+body {
+  background-color: var(--color-off-white);
+  color: var(--color-teal-dark);
+}
