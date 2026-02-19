@@ -81,6 +81,17 @@ export default function Game() {
 
   // --- Helpers ---
 
+  // Deep copy helper to avoid state mutation
+  const deepCopyPlayers = (currentPlayers: PlayerState[]): PlayerState[] => {
+      return currentPlayers.map(p => ({
+          ...p,
+          inventory: {
+              ...p.inventory,
+              vacuum: p.inventory.vacuum ? { ...p.inventory.vacuum } : undefined
+          }
+      }));
+  };
+
   const addLog = (text: string, faction: Faction) => {
       setGameState(prev => ({
           ...prev,
@@ -253,18 +264,6 @@ export default function Game() {
           }
 
           // Resource Collection
-          if (player.faction === 'PIGEON') {
-              if (n.type === 'PARK') {
-                  player.inventory.twig += 2;
-                  showFloatingText("+2 Twigs", n.id);
-                  collectedLog.push("2 Twigs");
-              }
-              if (n.type === 'DUMPSTER') {
-                  player.inventory.straw += 2;
-                  showFloatingText("+2 Straw", n.id);
-                  collectedLog.push("2 Straw");
-              }
-          }
           if (player.faction === 'HUMAN' && n.resourceType === 'COIN') {
               player.inventory.coins++;
               showFloatingText("+1 Coin", n.id);
@@ -314,6 +313,26 @@ export default function Game() {
           setPlayers(newPlayers);
           setNodes(prev => prev.map(n => n.id === node.id ? { ...n, structure: { type: 'STICKY_TRAP', owner: 'HUMAN' } } : n));
       });
+  };
+
+  const gatherResources = () => {
+      const node = nodes.find(n => n.id === currentPlayer.currentNodeId)!;
+      
+      if (node.type === 'DUMPSTER') {
+          performAction("Gathered Straw", () => {
+              const newPlayers = deepCopyPlayers(players);
+              newPlayers[gameState.turnIndex].inventory.straw += 2;
+              setPlayers(newPlayers);
+              showFloatingText("+2 Straw", node.id);
+          });
+      } else if (node.type === 'PARK') {
+          performAction("Gathered Twigs", () => {
+              const newPlayers = deepCopyPlayers(players);
+              newPlayers[gameState.turnIndex].inventory.twig += 2;
+              setPlayers(newPlayers);
+              showFloatingText("+2 Twigs", node.id);
+          });
+      }
   };
 
   const performAction = (actionName: string, effect: () => void) => {
@@ -449,19 +468,23 @@ export default function Game() {
       const nextIndex = (gameState.turnIndex + 1) % 2;
       let nextRound = gameState.round;
       
-      // Handle Vacuum Shelf-Life (Decrement at end of Human turn)
-      const newPlayers = [...players];
+      const newPlayers = deepCopyPlayers(players);
+      
+      // Human Vacuum Decay
       if (currentPlayer.faction === 'HUMAN' && currentPlayer.inventory.vacuum) {
-          currentPlayer.inventory.vacuum.turnsLeft--;
-          if (currentPlayer.inventory.vacuum.turnsLeft <= 0) {
-              delete currentPlayer.inventory.vacuum;
-              addLog("Vacuum rental expired!", 'HUMAN');
+          const humanPlayer = newPlayers.find(p => p.faction === 'HUMAN');
+          if (humanPlayer && humanPlayer.inventory.vacuum) {
+              humanPlayer.inventory.vacuum.turnsLeft--;
+              if (humanPlayer.inventory.vacuum.turnsLeft <= 0) {
+                  delete humanPlayer.inventory.vacuum;
+                  addLog("Vacuum rental expired!", 'HUMAN');
+              }
           }
       }
       
       if (nextIndex === 0) { 
           nextRound++;
-          // Passive Income
+          // Passive Income - HUMAN ONLY
           const human = newPlayers.find(p => p.faction === 'HUMAN')!;
           const hClass = CLASSES.find(c => c.id === human.classId)!;
           let income = PASSIVE_INCOME_HUMAN;
@@ -469,9 +492,9 @@ export default function Game() {
           
           human.inventory.coins += income;
           addLog(`Round End. Human gets +${income} Coins.`, 'HUMAN');
-      } else {
-          setPlayers(newPlayers); // Update players if no round change (for vacuum)
       }
+
+      setPlayers(newPlayers);
 
       if (nextRound > MAX_ROUNDS) {
           setGameState(prev => ({ ...prev, phase: 'GAME_OVER', winner: 'HUMAN' }));
@@ -545,17 +568,30 @@ export default function Game() {
             <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
 
             {/* Balcony Containers (Visual) */}
-            {[0, 1, 2, 3].map(id => {
-                // Hardcoded positions based on generateMap logic for simplicity
-                const positions = [
-                    { left: '15%', top: '15%', width: '30%', height: '30%' }, // TL (approx)
-                    { left: '55%', top: '15%', width: '30%', height: '30%' }, // TR
-                    { left: '15%', top: '55%', width: '30%', height: '30%' }, // BL
-                    { left: '55%', top: '55%', width: '30%', height: '30%' }, // BR
-                ];
+            {Array.from(new Set(nodes.map(n => n.balconyId).filter(id => id !== undefined))).map(id => {
+                const balconyNodes = nodes.filter(n => n.balconyId === id);
+                if (balconyNodes.length === 0) return null;
+
+                const minX = Math.min(...balconyNodes.map(n => n.x));
+                const maxX = Math.max(...balconyNodes.map(n => n.x));
+                const minY = Math.min(...balconyNodes.map(n => n.y));
+                const maxY = Math.max(...balconyNodes.map(n => n.y));
+
+                // Add padding
+                const left = minX - 4;
+                const top = minY - 4;
+                const width = (maxX - minX) + 8;
+                const height = (maxY - minY) + 8;
+
                 return (
-                    <div key={id} className="absolute bg-white/50 border-2 border-stone-400 rounded-3xl" style={positions[id]}>
-                        <span className="absolute -top-3 left-4 bg-stone-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">Balcony {id + 1}</span>
+                    <div key={id} className="absolute bg-white/50 border-2 border-stone-400 rounded-3xl" 
+                        style={{
+                            left: `${left}%`,
+                            top: `${top}%`,
+                            width: `${width}%`,
+                            height: `${height}%`
+                        }}>
+                        <span className="absolute -top-3 left-4 bg-stone-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">Apt {Math.floor((id as number)/2) + 1}0{(id as number)%2 + 1}</span>
                     </div>
                 );
             })}
@@ -699,6 +735,12 @@ export default function Game() {
                         <div className="grid grid-cols-2 gap-2">
                             {currentPlayer.faction === 'PIGEON' ? (
                                 <>
+                                    {nodes.find(n => n.id === currentPlayer.currentNodeId)?.type === 'DUMPSTER' && (
+                                        <Button onClick={gatherResources} className="col-span-2 bg-amber-600 hover:bg-amber-700">Gather Straw (+2)</Button>
+                                    )}
+                                    {nodes.find(n => n.id === currentPlayer.currentNodeId)?.type === 'PARK' && (
+                                        <Button onClick={gatherResources} className="col-span-2 bg-green-600 hover:bg-green-700">Gather Twigs (+2)</Button>
+                                    )}
                                     <Button onClick={buildNest} className="col-span-2">Build Nest (2)</Button>
                                 </>
                             ) : (

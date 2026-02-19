@@ -4,16 +4,16 @@ export const generateMap = (): Node[] => {
   const nodes: Node[] = [];
 
   // --- 1. Balconies (6 Units: 2 Columns x 3 Rows) ---
-  // Left Col: 0 (Top), 2 (Mid), 4 (Bot)
-  // Right Col: 1 (Top), 3 (Mid), 5 (Bot)
+  // Left Col: 0 (Top), 2 (Mid), 4 (Bot) - Entry at X=20
+  // Right Col: 1 (Top), 3 (Mid), 5 (Bot) - Entry at X=80
   
   const balconies = [
-    { id: 0, label: 'Apt 101', entryX: 25, entryY: 20, dirX: -1, dirY: -0.5 },
-    { id: 1, label: 'Apt 102', entryX: 75, entryY: 20, dirX: 1, dirY: -0.5 },
-    { id: 2, label: 'Apt 201', entryX: 25, entryY: 50, dirX: -1, dirY: 0 },
-    { id: 3, label: 'Apt 202', entryX: 75, entryY: 50, dirX: 1, dirY: 0 },
-    { id: 4, label: 'Apt 301', entryX: 25, entryY: 80, dirX: -1, dirY: 0.5 },
-    { id: 5, label: 'Apt 302', entryX: 75, entryY: 80, dirX: 1, dirY: 0.5 },
+    { id: 0, label: 'Apt 101', entryX: 20, entryY: 20, dirX: 1, dirY: 0 }, // Branch Right (Inward)
+    { id: 1, label: 'Apt 102', entryX: 80, entryY: 20, dirX: -1, dirY: 0 }, // Branch Left (Inward)
+    { id: 2, label: 'Apt 201', entryX: 20, entryY: 50, dirX: 1, dirY: 0 },
+    { id: 3, label: 'Apt 202', entryX: 80, entryY: 50, dirX: -1, dirY: 0 },
+    { id: 4, label: 'Apt 301', entryX: 20, entryY: 80, dirX: 1, dirY: 0 },
+    { id: 5, label: 'Apt 302', entryX: 80, entryY: 80, dirX: -1, dirY: 0 },
   ];
 
   balconies.forEach(b => {
@@ -29,7 +29,7 @@ export const generateMap = (): Node[] => {
           balconyId: b.id
       });
 
-      // Slot Nodes (Branching Path)
+      // Slot Nodes (Branching Path Inward)
       // Entry -> Slot 1 -> Slot 2
       // Entry -> Slot 3 -> Slot 4
       // Entry -> Slot 5
@@ -56,33 +56,36 @@ export const generateMap = (): Node[] => {
           });
       };
 
-      // Layout logic: spread out from entry
-      createSlot(slot1, b.entryX + (b.dirX * 5), b.entryY - 5, [entryId]);
-      createSlot(slot2, b.entryX + (b.dirX * 10), b.entryY - 5, [slot1]);
+      // Layout logic: spread inward from entry
+      // Slot 1 & 2: Upper branch
+      createSlot(slot1, b.entryX + (b.dirX * 6), b.entryY - 6, [entryId]);
+      createSlot(slot2, b.entryX + (b.dirX * 12), b.entryY - 6, [slot1]);
       
-      createSlot(slot3, b.entryX + (b.dirX * 5), b.entryY + 5, [entryId]);
-      createSlot(slot4, b.entryX + (b.dirX * 10), b.entryY + 5, [slot3]);
+      // Slot 3 & 4: Lower branch
+      createSlot(slot3, b.entryX + (b.dirX * 6), b.entryY + 6, [entryId]);
+      createSlot(slot4, b.entryX + (b.dirX * 12), b.entryY + 6, [slot3]);
 
-      createSlot(slot5, b.entryX + (b.dirX * 8), b.entryY, [entryId]);
+      // Slot 5: Middle extension
+      createSlot(slot5, b.entryX + (b.dirX * 10), b.entryY, [entryId]);
   });
 
   const entryIds = balconies.map(b => `balcony-${b.id}-entry`);
 
   // --- 2. Special Resource Hubs ---
-  // Dumpster (Straw) - Top Left
+  // Dumpster (Straw) - Top Center-Left
   nodes.push({
       id: 'dumpster',
       type: 'DUMPSTER',
-      x: 10, y: 10,
+      x: 35, y: 10,
       connections: [],
       resourceType: 'STRAW'
   });
 
-  // Park (Twigs) - Bottom Right
+  // Park (Twigs) - Bottom Center-Right
   nodes.push({
       id: 'park',
       type: 'PARK',
-      x: 90, y: 90,
+      x: 65, y: 90,
       connections: [],
       resourceType: 'TWIG'
   });
@@ -99,8 +102,8 @@ export const generateMap = (): Node[] => {
         const y = fromNode.y + (toNode.y - fromNode.y) * t;
         const id = `wire-${fromId}-${toId}-${i}`;
         
-        // Chance for Event on wire (higher chance now)
-        const isEvent = Math.random() > 0.8;
+        // Chance for Event on wire
+        const isEvent = Math.random() > 0.85;
         
         nodes.push({
             id,
@@ -122,12 +125,12 @@ export const generateMap = (): Node[] => {
   };
 
   // Connect Dumpster to Top Balconies
-  addWire('dumpster', entryIds[0], 2);
-  addWire('dumpster', entryIds[1], 4); // Long wire across top
+  addWire('dumpster', entryIds[0], 1);
+  addWire('dumpster', entryIds[1], 3); 
 
   // Connect Park to Bottom Balconies
-  addWire('park', entryIds[5], 2);
-  addWire('park', entryIds[4], 4); // Long wire across bottom
+  addWire('park', entryIds[5], 1);
+  addWire('park', entryIds[4], 3); 
 
   // Vertical Connections (Left Wing)
   addWire(entryIds[0], entryIds[2], 2);
@@ -142,17 +145,18 @@ export const generateMap = (): Node[] => {
   addWire(entryIds[2], entryIds[5], 3);
   addWire(entryIds[4], entryIds[1], 5); // Long diagonal
 
-  // --- 4. Human Patrol Path (Outer Loop with Elevators) ---
+  // --- 4. Human Patrol Path (Outer Loop with Elevators at Corners) ---
+  // Pushed to edges: 3% and 97%
   const patrolNodes = [
-    { id: 'elevator-tl', x: 5, y: 5, type: 'ELEVATOR' },
-    { id: 'road-top', x: 50, y: 5, type: 'ROAD' },
-    { id: 'elevator-tr', x: 95, y: 5, type: 'ELEVATOR' },
-    { id: 'road-right', x: 95, y: 50, type: 'ROAD' },
-    { id: 'elevator-br', x: 95, y: 95, type: 'ELEVATOR' },
-    { id: 'road-bottom', x: 50, y: 95, type: 'ROAD' },
-    { id: 'elevator-bl', x: 5, y: 95, type: 'ELEVATOR' },
-    { id: 'van-bl', x: 5, y: 80, type: 'VAN' }, // Van near BL elevator
-    { id: 'road-left', x: 5, y: 50, type: 'ROAD' },
+    { id: 'elevator-tl', x: 3, y: 3, type: 'ELEVATOR' },
+    { id: 'road-top', x: 50, y: 3, type: 'ROAD' },
+    { id: 'elevator-tr', x: 97, y: 3, type: 'ELEVATOR' },
+    { id: 'road-right', x: 97, y: 50, type: 'ROAD' },
+    { id: 'elevator-br', x: 97, y: 97, type: 'ELEVATOR' },
+    { id: 'road-bottom', x: 50, y: 97, type: 'ROAD' },
+    { id: 'elevator-bl', x: 3, y: 97, type: 'ELEVATOR' },
+    { id: 'van-bl', x: 3, y: 80, type: 'VAN' }, // Van near BL elevator
+    { id: 'road-left', x: 3, y: 50, type: 'ROAD' },
   ];
 
   patrolNodes.forEach(p => {
