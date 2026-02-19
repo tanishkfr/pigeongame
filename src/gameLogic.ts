@@ -1,136 +1,188 @@
-import { Tile, BALCONY_SIZE, NUM_BALCONIES, Faction, Position } from './types';
+import { Node, Faction } from './types';
 
-export const generateBoard = (): Tile[] => {
-  const tiles: Tile[] = [];
+export const generateMap = (): Node[] => {
+  const nodes: Node[] = [];
+
+  // --- 1. The 4 Big Balconies (Hubs) ---
+  // Layout: Roughly a square in the middle
+  const balconies = [
+    { id: 'balcony-tl', x: 30, y: 30, label: 'Balcony 1' },
+    { id: 'balcony-tr', x: 70, y: 30, label: 'Balcony 2' },
+    { id: 'balcony-bl', x: 30, y: 70, label: 'Balcony 3' },
+    { id: 'balcony-br', x: 70, y: 70, label: 'Balcony 4' },
+  ];
+
+  balconies.forEach(b => {
+    nodes.push({
+      id: b.id,
+      type: 'BALCONY',
+      x: b.x,
+      y: b.y,
+      connections: [],
+      resource: false, // Balconies don't spawn resources, they are for building
+      structures: [],
+      maxStructures: 3
+    });
+  });
+
+  // --- 2. Pigeon Wires (Inner Connections) ---
+  // Connect TL-TR, TR-BR, BR-BL, BL-TL (Square) + Diagonals
+  // We add "Wire Nodes" in between to make movement take steps
   
-  for (let b = 0; b < NUM_BALCONIES; b++) {
-    for (let r = 0; r < BALCONY_SIZE; r++) {
-      for (let c = 0; c < BALCONY_SIZE; c++) {
-        const id = `b${b}-r${r}-c${c}`;
-        let type: Tile['type'] = 'EMPTY';
-        let allowedFactions: Faction[] = ['HUMAN', 'PIGEON'];
-        let isWalkable = true;
+  const addWire = (fromId: string, toId: string, steps: number) => {
+    let prevId = fromId;
+    const fromNode = nodes.find(n => n.id === fromId)!;
+    const toNode = nodes.find(n => n.id === toId)!;
 
-        // Wires (Pigeon only paths) - edges
-        if (r === 0 || c === BALCONY_SIZE - 1) {
-             if (Math.random() > 0.6) {
-                // Visual distinction handled in UI, logic here
-                // We'll keep them walkable by humans for gameplay flow unless strictly wire
-                // But let's say wires are strictly pigeon
-                // allowedFactions = ['PIGEON']; 
-             }
-        }
-
-        // Obstacles
-        if (Math.random() > 0.92) {
-            type = 'OBSTACLE';
-            isWalkable = false;
-        }
-
-        // Resources
-        if (type === 'EMPTY' && Math.random() > 0.88) {
-            type = 'RESOURCE';
-        }
-
-        // Shop (Inner corners)
-        const isInnerCorner = 
-            (b === 0 && r === BALCONY_SIZE - 1 && c === BALCONY_SIZE - 1) ||
-            (b === 1 && r === BALCONY_SIZE - 1 && c === 0) ||
-            (b === 2 && r === 0 && c === BALCONY_SIZE - 1) ||
-            (b === 3 && r === 0 && c === 0);
-            
-        if (isInnerCorner) {
-            type = 'SHOP';
-        }
-
-        // Chance Tiles
-        if (type === 'EMPTY' && Math.random() > 0.95) {
-            type = 'CHANCE';
-        }
-
-        tiles.push({
-          id,
-          type,
-          position: { balconyId: b, row: r, col: c },
-          isWalkable,
-          allowedFactions,
-          owner: undefined
+    for (let i = 1; i <= steps; i++) {
+        const t = i / (steps + 1);
+        const x = fromNode.x + (toNode.x - fromNode.x) * t;
+        const y = fromNode.y + (toNode.y - fromNode.y) * t;
+        const id = `wire-${fromId}-${toId}-${i}`;
+        
+        nodes.push({
+            id,
+            type: 'WIRE',
+            x,
+            y,
+            connections: [prevId],
+            resource: Math.random() > 0.3, // 70% chance of straw
+            structures: [],
+            maxStructures: 0 // Wires can't have structures
         });
-      }
+        
+        // Connect previous to this
+        const prevNode = nodes.find(n => n.id === prevId)!;
+        if (!prevNode.connections.includes(id)) prevNode.connections.push(id);
+
+        prevId = id;
     }
-  }
-  return tiles;
+    // Connect last wire node to target
+    const lastNode = nodes.find(n => n.id === prevId)!;
+    if (!lastNode.connections.includes(toId)) lastNode.connections.push(toId);
+    const targetNode = nodes.find(n => n.id === toId)!;
+    if (!targetNode.connections.includes(prevId)) targetNode.connections.push(prevId);
+  };
+
+  addWire('balcony-tl', 'balcony-tr', 2);
+  addWire('balcony-tr', 'balcony-br', 2);
+  addWire('balcony-br', 'balcony-bl', 2);
+  addWire('balcony-bl', 'balcony-tl', 2);
+  // Diagonal wires
+  addWire('balcony-tl', 'balcony-br', 3);
+  addWire('balcony-tr', 'balcony-bl', 3);
+
+  // --- 3. Human Patrol Path (Outer Loop) ---
+  // Circle around the balconies
+  const patrolNodes = [
+    { id: 'road-top', x: 50, y: 10 },
+    { id: 'road-right', x: 90, y: 50 },
+    { id: 'road-bottom', x: 50, y: 90 },
+    { id: 'road-left', x: 10, y: 50 },
+    // Corners
+    { id: 'road-tl', x: 15, y: 15 },
+    { id: 'road-tr', x: 85, y: 15 },
+    { id: 'road-br', x: 85, y: 85 },
+    { id: 'road-bl', x: 15, y: 85 },
+  ];
+
+  // The Van (Shop) is at road-top
+  patrolNodes.forEach(p => {
+      nodes.push({
+          id: p.id,
+          type: p.id === 'road-top' ? 'VAN' : 'ROAD',
+          x: p.x,
+          y: p.y,
+          connections: [],
+          resource: Math.random() > 0.5, // Money on the road
+          structures: [],
+          maxStructures: 1 // Roads can have spikes
+      });
+  });
+
+  // Connect Patrol Path Ring
+  const connect = (id1: string, id2: string) => {
+      const n1 = nodes.find(n => n.id === id1)!;
+      const n2 = nodes.find(n => n.id === id2)!;
+      n1.connections.push(id2);
+      n2.connections.push(id1);
+  };
+
+  connect('road-top', 'road-tr');
+  connect('road-tr', 'road-right');
+  connect('road-right', 'road-br');
+  connect('road-br', 'road-bottom');
+  connect('road-bottom', 'road-bl');
+  connect('road-bl', 'road-left');
+  connect('road-left', 'road-tl');
+  connect('road-tl', 'road-top');
+
+  // Connect Patrol Path to Balconies (Access Points)
+  connect('road-tl', 'balcony-tl');
+  connect('road-tr', 'balcony-tr');
+  connect('road-br', 'balcony-br');
+  connect('road-bl', 'balcony-bl');
+
+  return nodes;
 };
 
-export const getTileAt = (tiles: Tile[], balconyId: number, row: number, col: number) => {
-  return tiles.find(t => t.position.balconyId === balconyId && t.position.row === row && t.position.col === col);
-};
+export const getValidMoves = (nodes: Node[], currentId: string, moves: number, faction: Faction): string[] => {
+    // BFS to find all nodes exactly 'moves' steps away
+    // Pigeons: Can use WIRE and BALCONY
+    // Humans: Can use ROAD, VAN, and BALCONY
+    
+    const validTypes = faction === 'PIGEON' 
+        ? ['WIRE', 'BALCONY'] 
+        : ['ROAD', 'VAN', 'BALCONY'];
 
-// Check if two positions are adjacent (including balcony connections)
-export const isAdjacent = (p1: Position, p2: Position, allowDiagonal: boolean = false): boolean => {
-    if (p1.balconyId === p2.balconyId) {
-        const dRow = Math.abs(p1.row - p2.row);
-        const dCol = Math.abs(p1.col - p2.col);
-        if (allowDiagonal) {
-            return dRow <= 1 && dCol <= 1 && (dRow + dCol > 0);
+    let currentLevel = [currentId];
+    const visited = new Set<string>();
+    visited.add(currentId);
+
+    for (let i = 0; i < moves; i++) {
+        const nextLevel = new Set<string>();
+        for (const nodeId of currentLevel) {
+            const node = nodes.find(n => n.id === nodeId);
+            if (!node) continue;
+            
+            for (const neighborId of node.connections) {
+                const neighbor = nodes.find(n => n.id === neighborId);
+                if (neighbor && validTypes.includes(neighbor.type)) {
+                    // We allow revisiting nodes in a path? Usually board games don't allow backtracking immediately, 
+                    // but for simplicity let's just find reachable nodes at distance X.
+                    // Actually, "must move exactly that number" usually implies a path of length X.
+                    // Simple BFS for reachability:
+                    nextLevel.add(neighborId);
+                }
+            }
         }
-        return (dRow + dCol === 1);
+        currentLevel = Array.from(nextLevel);
     }
-
-    // Balcony connections (2x2 grid)
-    // 0 1
-    // 2 3
-    // Connections happen at specific edges.
-    // Simplified: If they are logically adjacent balconies, check if they are on the connecting edge.
-    // For prototype feel, let's just allow movement between adjacent balconies if you are on the edge row/col.
     
-    // This logic is a bit complex for a quick prototype, let's simplify:
-    // If balconies are adjacent, and Manhattan distance of global coords is 1.
-    
-    const getGlobalPos = (p: Position) => {
-        const bRow = Math.floor(p.balconyId / 2);
-        const bCol = p.balconyId % 2;
-        return {
-            x: bCol * BALCONY_SIZE + p.col,
-            y: bRow * BALCONY_SIZE + p.row
-        };
-    };
-
-    const gp1 = getGlobalPos(p1);
-    const gp2 = getGlobalPos(p2);
-    
-    const dist = Math.abs(gp1.x - gp2.x) + Math.abs(gp1.y - gp2.y);
-    // Note: This global pos logic puts balconies flush against each other.
-    // So (0, 4) in B0 is adjacent to (0, 0) in B1 if we consider them touching.
-    // B0 (row 0..4, col 0..4). B1 (row 0..4, col 0..4) -> Global B1 starts at x=5.
-    // B0(0,4) -> x=4. B1(0,0) -> x=5. Dist = 1. Correct.
-    
-    if (allowDiagonal) {
-         const dx = Math.abs(gp1.x - gp2.x);
-         const dy = Math.abs(gp1.y - gp2.y);
-         return dx <= 1 && dy <= 1 && (dx + dy > 0);
-    }
-
-    return dist === 1;
+    return currentLevel;
 };
 
-export const isValidStep = (current: Tile, target: Tile, faction: Faction, allowDiagonal: boolean): boolean => {
-    if (!target.isWalkable) return false;
-    if (target.type === 'SPIKES' && faction === 'PIGEON') return false; // Spikes block pigeons
-    // if (!target.allowedFactions.includes(faction)) return false; // Strict faction paths disabled for fun flow
-
-    return isAdjacent(current.position, target.position, allowDiagonal);
-};
-
-export const getPushTarget = (tiles: Tile[], pigeonPos: Position): Tile | null => {
-    // Push logic: Try to push away from center or just random adjacent empty tile
-    // For Uncle ability.
-    // Simple implementation: Push to a random valid adjacent tile that isn't the current one.
-    // Ideally push "backwards" but "backwards" is relative.
-    // Let's push to a neighbor that increases distance from center of map?
-    // Or just any empty neighbor.
+export const getShortestPath = (nodes: Node[], startId: string, endId: string, faction: Faction): string[] => {
+    // BFS for path reconstruction
+    const validTypes = faction === 'PIGEON' ? ['WIRE', 'BALCONY'] : ['ROAD', 'VAN', 'BALCONY'];
     
-    const neighbors = tiles.filter(t => isAdjacent(pigeonPos, t.position, true) && t.isWalkable && t.type !== 'OBSTACLE');
-    if (neighbors.length === 0) return null;
-    return neighbors[Math.floor(Math.random() * neighbors.length)];
+    const queue: { id: string, path: string[] }[] = [{ id: startId, path: [startId] }];
+    const visited = new Set<string>([startId]);
+
+    while (queue.length > 0) {
+        const { id, path } = queue.shift()!;
+        if (id === endId) return path;
+
+        const node = nodes.find(n => n.id === id);
+        if (!node) continue;
+
+        for (const neighborId of node.connections) {
+            const neighbor = nodes.find(n => n.id === neighborId);
+            if (neighbor && validTypes.includes(neighbor.type) && !visited.has(neighborId)) {
+                visited.add(neighborId);
+                queue.push({ id: neighborId, path: [...path, neighborId] });
+            }
+        }
+    }
+    return [];
 };

@@ -1,20 +1,19 @@
 export type Faction = 'HUMAN' | 'PIGEON';
 
-export type TileType = 'EMPTY' | 'NEST' | 'PROP' | 'RESOURCE' | 'CHANCE' | 'SHOP' | 'OBSTACLE' | 'SPIKES';
+export type NodeType = 'BALCONY' | 'WIRE' | 'ROAD' | 'VAN';
 
-export interface Position {
-  balconyId: number;
-  row: number;
-  col: number;
-}
-
-export interface Tile {
+export interface Node {
   id: string;
-  type: TileType;
-  owner?: Faction;
-  position: Position;
-  isWalkable: boolean;
-  allowedFactions: Faction[]; 
+  type: NodeType;
+  x: number; // Percentage 0-100 for responsive layout
+  y: number; // Percentage 0-100
+  connections: string[]; // IDs of connected nodes
+  resource?: boolean; // Does it have straw/currency?
+  structures: {
+    type: 'NEST' | 'PROP' | 'SPIKES';
+    owner: Faction;
+  }[];
+  maxStructures: number;
 }
 
 export interface PlayerClass {
@@ -23,10 +22,9 @@ export interface PlayerClass {
   description: string;
   faction: Faction;
   stats: {
-    speed: number; // Modifier to dice roll
-    strength: number; // Cost to remove enemy structures
-    resourceGain: number; // Extra resources per pickup/round
-    maxActions: number; // Actions per turn
+    speed: number;
+    strength: number;
+    resourceGain: number;
   };
   ability: string;
 }
@@ -35,8 +33,13 @@ export interface PlayerState {
   faction: Faction;
   classId: string;
   resources: number;
-  position: Position;
-  inventory: string[];
+  currentNodeId: string;
+  inventory: {
+    vacuum?: {
+      turnsLeft: number;
+    };
+  };
+  initiative: number;
 }
 
 export interface LogEntry {
@@ -46,57 +49,55 @@ export interface LogEntry {
   round: number;
 }
 
-export type Phase = 'ROLL' | 'MOVE' | 'ACTION' | 'GAME_OVER';
+export type Phase = 'INITIATIVE' | 'ROLL' | 'MOVE' | 'ACTION' | 'ROUND_END' | 'GAME_OVER';
 
 export interface GameState {
   phase: Phase;
-  turn: Faction;
+  turnIndex: number; // 0 or 1 (index in players array)
   round: number;
   diceRoll: number | null;
   movesLeft: number;
-  actionPoints: number;
+  hasActed: boolean; // Humans limited to 1 action
   logs: LogEntry[];
   winner: Faction | null;
 }
 
-export const BALCONY_SIZE = 5;
-export const NUM_BALCONIES = 4;
-export const MAX_ROUNDS = 15;
-export const WINNING_NEST_COUNT = 3;
+export const MAX_ROUNDS = 20;
+export const WINNING_NEST_COUNT_PER_BALCONY = 3;
+export const VACUUM_COST = 5;
+export const VACUUM_DURABILITY = 3;
 
 export const CLASSES: PlayerClass[] = [
-  // Pigeons
   {
     id: 'guttersnipe',
     name: 'The Guttersnipe',
-    description: 'Scrappy and fast. Born in the chaotic traffic signals.',
+    description: 'Scrappy and fast.',
     faction: 'PIGEON',
-    stats: { speed: 1, strength: 1, resourceGain: 0, maxActions: 1 },
-    ability: 'Street Smarts: Can move diagonally.',
+    stats: { speed: 1, strength: 1, resourceGain: 0 },
+    ability: 'Street Smarts: +1 Speed',
   },
   {
     id: 'chonk',
     name: 'The Chonk',
-    description: 'Well-fed by the grandma next door. Absolute unit.',
+    description: 'Absolute unit.',
     faction: 'PIGEON',
-    stats: { speed: -1, strength: 3, resourceGain: 0, maxActions: 1 },
-    ability: 'Heavy Sitter: Nests cost 1 resource instead of 2.',
+    stats: { speed: -1, strength: 3, resourceGain: 0 },
+    ability: 'Heavy Sitter: Nests cost 1 less.',
   },
-  // Humans
   {
     id: 'uncle',
     name: 'Morning Walk Uncle',
-    description: 'Armed with a stick and righteous fury.',
+    description: 'Armed with a stick.',
     faction: 'HUMAN',
-    stats: { speed: 0, strength: 2, resourceGain: 1, maxActions: 1 },
-    ability: 'Loud Yell: Can push pigeons back 2 tiles.',
+    stats: { speed: 0, strength: 2, resourceGain: 1 },
+    ability: 'Pension: +1 Passive Income',
   },
   {
     id: 'student',
     name: 'Stressed Student',
-    description: 'Just wants quiet to study. Efficient but fragile.',
+    description: 'Efficient but fragile.',
     faction: 'HUMAN',
-    stats: { speed: 1, strength: 1, resourceGain: 2, maxActions: 2 },
-    ability: 'All-Nighter: Can perform two actions in one turn.',
+    stats: { speed: 1, strength: 1, resourceGain: 2 },
+    ability: 'Scholarship: Start with +3 Money',
   }
 ];
