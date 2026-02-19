@@ -548,7 +548,7 @@ export default function Game() {
     <div className="min-h-screen bg-off-white text-teal-dark p-4 font-sans flex flex-col items-center overflow-hidden">
       {/* Header */}
       <div className="w-full max-w-6xl flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-black text-terracotta uppercase">Kabootar vs Khiladi</h1>
+        <h1 className="text-2xl font-black text-terracotta uppercase">Pigeons and Balconies</h1>
         <div className="flex gap-4">
             {players.map((p, i) => (
                 <div key={i} className={`px-4 py-2 rounded-lg border-2 shadow-sm flex items-center gap-2 transition-all ${gameState.turnIndex === i ? 'scale-110 border-black ring-2 ring-yellow-400' : 'opacity-60'}`}>
