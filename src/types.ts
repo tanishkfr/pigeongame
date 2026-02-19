@@ -10,7 +10,7 @@ export interface Node {
   connections: string[]; 
   resourceType?: 'STRAW' | 'TWIG' | 'COIN'; // For visual indicators or specific drops
   structure?: {
-    type: 'NEST' | 'PROP' | 'SPIKES';
+    type: 'NEST' | 'PROP' | 'SPIKES' | 'STICKY_TRAP';
     owner: Faction;
   };
   balconyId?: number; 

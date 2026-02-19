@@ -3,16 +3,17 @@ import { Node, Faction } from './types';
 export const generateMap = (): Node[] => {
   const nodes: Node[] = [];
 
-  // --- 1. Balconies (Entry + Slots) ---
-  // We'll define 4 balcony areas.
-  // Entry is the interaction point for Wires/Roads.
-  // Slots extend from the Entry.
+  // --- 1. Balconies (6 Units: 2 Columns x 3 Rows) ---
+  // Left Col: 0 (Top), 2 (Mid), 4 (Bot)
+  // Right Col: 1 (Top), 3 (Mid), 5 (Bot)
   
   const balconies = [
-    { id: 0, label: 'Balcony 1', entryX: 35, entryY: 35, dirX: -1, dirY: -1 }, // TL, slots go up-left
-    { id: 1, label: 'Balcony 2', entryX: 65, entryY: 35, dirX: 1, dirY: -1 },  // TR, slots go up-right
-    { id: 2, label: 'Balcony 3', entryX: 35, entryY: 65, dirX: -1, dirY: 1 },  // BL, slots go down-left
-    { id: 3, label: 'Balcony 4', entryX: 65, entryY: 65, dirX: 1, dirY: 1 },   // BR, slots go down-right
+    { id: 0, label: 'Apt 101', entryX: 25, entryY: 20, dirX: -1, dirY: -0.5 },
+    { id: 1, label: 'Apt 102', entryX: 75, entryY: 20, dirX: 1, dirY: -0.5 },
+    { id: 2, label: 'Apt 201', entryX: 25, entryY: 50, dirX: -1, dirY: 0 },
+    { id: 3, label: 'Apt 202', entryX: 75, entryY: 50, dirX: 1, dirY: 0 },
+    { id: 4, label: 'Apt 301', entryX: 25, entryY: 80, dirX: -1, dirY: 0.5 },
+    { id: 5, label: 'Apt 302', entryX: 75, entryY: 80, dirX: 1, dirY: 0.5 },
   ];
 
   balconies.forEach(b => {
@@ -28,34 +29,65 @@ export const generateMap = (): Node[] => {
           balconyId: b.id
       });
 
-      // Slot Nodes (Path of 3)
-      let prevId = entryId;
-      for (let i = 1; i <= 3; i++) {
-          const slotId = `balcony-${b.id}-slot-${i}`;
-          const slotX = b.entryX + (b.dirX * i * 6); // 6% spacing
-          const slotY = b.entryY + (b.dirY * i * 6);
-          
+      // Slot Nodes (Branching Path)
+      // Entry -> Slot 1 -> Slot 2
+      // Entry -> Slot 3 -> Slot 4
+      // Entry -> Slot 5
+      
+      const slot1 = `balcony-${b.id}-slot-1`;
+      const slot2 = `balcony-${b.id}-slot-2`;
+      const slot3 = `balcony-${b.id}-slot-3`;
+      const slot4 = `balcony-${b.id}-slot-4`;
+      const slot5 = `balcony-${b.id}-slot-5`;
+
+      const createSlot = (id: string, x: number, y: number, connections: string[]) => {
           nodes.push({
-              id: slotId,
+              id,
               type: 'BALCONY_SLOT',
-              x: slotX,
-              y: slotY,
-              connections: [prevId],
+              x,
+              y,
+              connections,
               balconyId: b.id
           });
-          
-          // Connect prev to this
-          const prevNode = nodes.find(n => n.id === prevId)!;
-          prevNode.connections.push(slotId);
-          
-          prevId = slotId;
-      }
+          // Connect back
+          connections.forEach(connId => {
+              const conn = nodes.find(n => n.id === connId);
+              if (conn && !conn.connections.includes(id)) conn.connections.push(id);
+          });
+      };
+
+      // Layout logic: spread out from entry
+      createSlot(slot1, b.entryX + (b.dirX * 5), b.entryY - 5, [entryId]);
+      createSlot(slot2, b.entryX + (b.dirX * 10), b.entryY - 5, [slot1]);
+      
+      createSlot(slot3, b.entryX + (b.dirX * 5), b.entryY + 5, [entryId]);
+      createSlot(slot4, b.entryX + (b.dirX * 10), b.entryY + 5, [slot3]);
+
+      createSlot(slot5, b.entryX + (b.dirX * 8), b.entryY, [entryId]);
   });
 
-  // --- 2. Pigeon Wires (Connect Entries) ---
-  // Connect Entries in a square + diagonals
   const entryIds = balconies.map(b => `balcony-${b.id}-entry`);
-  
+
+  // --- 2. Special Resource Hubs ---
+  // Dumpster (Straw) - Top Left
+  nodes.push({
+      id: 'dumpster',
+      type: 'DUMPSTER',
+      x: 10, y: 10,
+      connections: [],
+      resourceType: 'STRAW'
+  });
+
+  // Park (Twigs) - Bottom Right
+  nodes.push({
+      id: 'park',
+      type: 'PARK',
+      x: 90, y: 90,
+      connections: [],
+      resourceType: 'TWIG'
+  });
+
+  // --- 3. Pigeon Wires (Connecting Balconies & Resources) ---
   const addWire = (fromId: string, toId: string, steps: number) => {
     let prevId = fromId;
     const fromNode = nodes.find(n => n.id === fromId)!;
@@ -67,9 +99,12 @@ export const generateMap = (): Node[] => {
         const y = fromNode.y + (toNode.y - fromNode.y) * t;
         const id = `wire-${fromId}-${toId}-${i}`;
         
+        // Chance for Event on wire (higher chance now)
+        const isEvent = Math.random() > 0.8;
+        
         nodes.push({
             id,
-            type: 'WIRE',
+            type: isEvent ? 'EVENT' : 'WIRE',
             x,
             y,
             connections: [prevId]
@@ -86,33 +121,49 @@ export const generateMap = (): Node[] => {
     if (!targetNode.connections.includes(prevId)) targetNode.connections.push(prevId);
   };
 
-  addWire(entryIds[0], entryIds[1], 2); // TL-TR
-  addWire(entryIds[1], entryIds[3], 2); // TR-BR
-  addWire(entryIds[3], entryIds[2], 2); // BR-BL
-  addWire(entryIds[2], entryIds[0], 2); // BL-TL
-  addWire(entryIds[0], entryIds[3], 3); // TL-BR
-  addWire(entryIds[1], entryIds[2], 3); // TR-BL
+  // Connect Dumpster to Top Balconies
+  addWire('dumpster', entryIds[0], 2);
+  addWire('dumpster', entryIds[1], 4); // Long wire across top
 
-  // --- 3. Patrol Path (Connects to Entries) ---
+  // Connect Park to Bottom Balconies
+  addWire('park', entryIds[5], 2);
+  addWire('park', entryIds[4], 4); // Long wire across bottom
+
+  // Vertical Connections (Left Wing)
+  addWire(entryIds[0], entryIds[2], 2);
+  addWire(entryIds[2], entryIds[4], 2);
+  
+  // Vertical Connections (Right Wing)
+  addWire(entryIds[1], entryIds[3], 2);
+  addWire(entryIds[3], entryIds[5], 2);
+
+  // Cross Connections (Zig Zag)
+  addWire(entryIds[0], entryIds[3], 3);
+  addWire(entryIds[2], entryIds[5], 3);
+  addWire(entryIds[4], entryIds[1], 5); // Long diagonal
+
+  // --- 4. Human Patrol Path (Outer Loop with Elevators) ---
   const patrolNodes = [
-    { id: 'road-top', x: 50, y: 10 },
-    { id: 'road-right', x: 90, y: 50 },
-    { id: 'road-bottom', x: 50, y: 90 },
-    { id: 'road-left', x: 10, y: 50 },
-    { id: 'road-tl', x: 15, y: 15 },
-    { id: 'road-tr', x: 85, y: 15 },
-    { id: 'road-br', x: 85, y: 85 },
-    { id: 'road-bl', x: 15, y: 85 },
+    { id: 'elevator-tl', x: 5, y: 5, type: 'ELEVATOR' },
+    { id: 'road-top', x: 50, y: 5, type: 'ROAD' },
+    { id: 'elevator-tr', x: 95, y: 5, type: 'ELEVATOR' },
+    { id: 'road-right', x: 95, y: 50, type: 'ROAD' },
+    { id: 'elevator-br', x: 95, y: 95, type: 'ELEVATOR' },
+    { id: 'road-bottom', x: 50, y: 95, type: 'ROAD' },
+    { id: 'elevator-bl', x: 5, y: 95, type: 'ELEVATOR' },
+    { id: 'van-bl', x: 5, y: 80, type: 'VAN' }, // Van near BL elevator
+    { id: 'road-left', x: 5, y: 50, type: 'ROAD' },
   ];
 
   patrolNodes.forEach(p => {
       nodes.push({
           id: p.id,
-          type: p.id === 'road-top' ? 'VAN' : 'ROAD',
+          type: p.type as any,
           x: p.x,
           y: p.y,
           connections: [],
-          resourceType: (p.id === 'road-top' || p.id === 'road-bottom' || p.id === 'road-left' || p.id === 'road-right') ? undefined : 'COIN'
+          // Chance for coin on road
+          resourceType: (p.type === 'ROAD' && Math.random() > 0.6) ? 'COIN' : undefined
       });
   });
 
@@ -124,28 +175,32 @@ export const generateMap = (): Node[] => {
   };
 
   // Ring
-  connect('road-top', 'road-tr');
-  connect('road-tr', 'road-right');
-  connect('road-right', 'road-br');
-  connect('road-br', 'road-bottom');
-  connect('road-bottom', 'road-bl');
-  connect('road-bl', 'road-left');
-  connect('road-left', 'road-tl');
-  connect('road-tl', 'road-top');
+  connect('elevator-tl', 'road-top');
+  connect('road-top', 'elevator-tr');
+  connect('elevator-tr', 'road-right');
+  connect('road-right', 'elevator-br');
+  connect('elevator-br', 'road-bottom');
+  connect('road-bottom', 'elevator-bl');
+  connect('elevator-bl', 'van-bl');
+  connect('van-bl', 'road-left');
+  connect('road-left', 'elevator-tl');
 
-  // Connect to Balcony Entries
-  connect('road-tl', entryIds[0]);
-  connect('road-tr', entryIds[1]);
-  connect('road-bl', entryIds[2]);
-  connect('road-br', entryIds[3]);
+  // Connect to Balcony Entries (Access Points)
+  // Humans access balconies from nearest road points
+  connect('road-left', entryIds[2]); // Left Road -> Mid Left Balcony
+  connect('road-right', entryIds[3]); // Right Road -> Mid Right Balcony
+  connect('elevator-tl', entryIds[0]);
+  connect('elevator-tr', entryIds[1]);
+  connect('elevator-bl', entryIds[4]);
+  connect('elevator-br', entryIds[5]);
 
   return nodes;
 };
 
 export const getValidMoves = (nodes: Node[], currentId: string, moves: number, faction: Faction): string[] => {
     const validTypes = faction === 'PIGEON' 
-        ? ['WIRE', 'BALCONY_ENTRY', 'BALCONY_SLOT'] 
-        : ['ROAD', 'VAN', 'BALCONY_ENTRY', 'BALCONY_SLOT'];
+        ? ['WIRE', 'BALCONY_ENTRY', 'BALCONY_SLOT', 'PARK', 'DUMPSTER', 'EVENT'] 
+        : ['ROAD', 'VAN', 'BALCONY_ENTRY', 'BALCONY_SLOT', 'ELEVATOR', 'EVENT'];
 
     let currentLevel = [currentId];
     const visited = new Set<string>();
@@ -176,8 +231,8 @@ export const getValidMoves = (nodes: Node[], currentId: string, moves: number, f
 
 export const getShortestPath = (nodes: Node[], startId: string, endId: string, faction: Faction): string[] => {
     const validTypes = faction === 'PIGEON' 
-        ? ['WIRE', 'BALCONY_ENTRY', 'BALCONY_SLOT'] 
-        : ['ROAD', 'VAN', 'BALCONY_ENTRY', 'BALCONY_SLOT'];
+        ? ['WIRE', 'BALCONY_ENTRY', 'BALCONY_SLOT', 'PARK', 'DUMPSTER', 'EVENT'] 
+        : ['ROAD', 'VAN', 'BALCONY_ENTRY', 'BALCONY_SLOT', 'ELEVATOR', 'EVENT'];
     
     const queue: { id: string, path: string[] }[] = [{ id: startId, path: [startId] }];
     const visited = new Set<string>([startId]);
