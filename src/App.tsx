@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Dice5, Bird, User, ShoppingBag, Home, Hammer, Skull, Zap, MapPin, Wind } from 'lucide-react';
-import { GameState, PlayerState, Node, CLASSES, Faction, PlayerClass, LogEntry, MAX_ROUNDS, WINNING_NEST_COUNT_PER_BALCONY, VACUUM_COST, VACUUM_DURABILITY } from './types';
+import { GameState, PlayerState, Node, CLASSES, Faction, PlayerClass, LogEntry, MAX_ROUNDS, WINNING_NEST_COUNT_PER_BALCONY, VACUUM_COST, VACUUM_DURABILITY, PASSIVE_INCOME_HUMAN } from './types';
 import { generateMap, getValidMoves, getShortestPath } from './gameLogic';
 
 // --- Components ---
@@ -325,13 +325,13 @@ export default function Game() {
       if (nextIndex === 0) { 
           nextRound++;
           // Passive Income
-          newPlayers.forEach(p => {
-              p.resources += 1;
-              const cls = CLASSES.find(c => c.id === p.classId)!;
-              if (cls.stats.resourceGain > 0) p.resources += cls.stats.resourceGain;
-          });
-          setPlayers(newPlayers);
-          addLog("Round End. Passive Income distributed.", 'HUMAN');
+          const human = newPlayers.find(p => p.faction === 'HUMAN')!;
+          const hClass = CLASSES.find(c => c.id === human.classId)!;
+          let income = PASSIVE_INCOME_HUMAN;
+          if (hClass.id === 'uncle') income += 1;
+          
+          human.inventory.coins += income;
+          addLog(`Round End. Human gets +${income} Coins.`, 'HUMAN');
       } else {
           setPlayers(newPlayers); // Update players if no round change (for vacuum)
       }

@@ -25,8 +25,7 @@ export const generateMap = (): Node[] => {
           x: b.entryX,
           y: b.entryY,
           connections: [],
-          balconyId: b.id,
-          resource: false
+          balconyId: b.id
       });
 
       // Slot Nodes (Path of 3)
@@ -42,8 +41,7 @@ export const generateMap = (): Node[] => {
               x: slotX,
               y: slotY,
               connections: [prevId],
-              balconyId: b.id,
-              resource: false
+              balconyId: b.id
           });
           
           // Connect prev to this
@@ -74,8 +72,7 @@ export const generateMap = (): Node[] => {
             type: 'WIRE',
             x,
             y,
-            connections: [prevId],
-            resource: Math.random() > 0.3
+            connections: [prevId]
         });
         
         const prevNode = nodes.find(n => n.id === prevId)!;
@@ -115,7 +112,7 @@ export const generateMap = (): Node[] => {
           x: p.x,
           y: p.y,
           connections: [],
-          resource: Math.random() > 0.5
+          resourceType: (p.id === 'road-top' || p.id === 'road-bottom' || p.id === 'road-left' || p.id === 'road-right') ? undefined : 'COIN'
       });
   });
 
