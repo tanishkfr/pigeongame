@@ -1,10 +1,7 @@
-import { Tile, BALCONY_SIZE, NUM_BALCONIES, Faction } from './types';
+import { Tile, BALCONY_SIZE, NUM_BALCONIES, Faction, Position } from './types';
 
 export const generateBoard = (): Tile[] => {
   const tiles: Tile[] = [];
-  
-  // 4 Balconies arranged in a 2x2 grid layout logically, 
-  // but we store them as a flat list of tiles with balconyId
   
   for (let b = 0; b < NUM_BALCONIES; b++) {
     for (let r = 0; r < BALCONY_SIZE; r++) {
@@ -14,30 +11,28 @@ export const generateBoard = (): Tile[] => {
         let allowedFactions: Faction[] = ['HUMAN', 'PIGEON'];
         let isWalkable = true;
 
-        // Map Generation Logic (Procedural-ish)
-        
-        // Wires (Pigeon only paths) - usually on edges or crossing
+        // Wires (Pigeon only paths) - edges
         if (r === 0 || c === BALCONY_SIZE - 1) {
-             // 30% chance of being a wire if on edge
-             if (Math.random() > 0.7) {
-                allowedFactions = ['PIGEON'];
+             if (Math.random() > 0.6) {
+                // Visual distinction handled in UI, logic here
+                // We'll keep them walkable by humans for gameplay flow unless strictly wire
+                // But let's say wires are strictly pigeon
+                // allowedFactions = ['PIGEON']; 
              }
         }
 
-        // Floor obstacles (Human blocked)
-        if (Math.random() > 0.9) {
-            type = 'OBSTACLE'; // Potted plant or AC unit
+        // Obstacles
+        if (Math.random() > 0.92) {
+            type = 'OBSTACLE';
             isWalkable = false;
         }
 
-        // Resources (Seeds for pigeons)
-        if (type === 'EMPTY' && Math.random() > 0.85) {
+        // Resources
+        if (type === 'EMPTY' && Math.random() > 0.88) {
             type = 'RESOURCE';
         }
 
-        // Shop (Center of the map - conceptually between balconies)
-        // Let's place shop tiles on the inner corners of the balconies
-        // Balcony 0: bottom-right, 1: bottom-left, 2: top-right, 3: top-left
+        // Shop (Inner corners)
         const isInnerCorner = 
             (b === 0 && r === BALCONY_SIZE - 1 && c === BALCONY_SIZE - 1) ||
             (b === 1 && r === BALCONY_SIZE - 1 && c === 0) ||
@@ -46,13 +41,11 @@ export const generateBoard = (): Tile[] => {
             
         if (isInnerCorner) {
             type = 'SHOP';
-            allowedFactions = ['HUMAN']; // Only humans use shop
         }
 
-        // Chance Tiles (Pigeon only)
-        if (type === 'EMPTY' && Math.random() > 0.92) {
+        // Chance Tiles
+        if (type === 'EMPTY' && Math.random() > 0.95) {
             type = 'CHANCE';
-            allowedFactions = ['PIGEON'];
         }
 
         tiles.push({
@@ -73,51 +66,71 @@ export const getTileAt = (tiles: Tile[], balconyId: number, row: number, col: nu
   return tiles.find(t => t.position.balconyId === balconyId && t.position.row === row && t.position.col === col);
 };
 
-export const isValidMove = (current: Tile, target: Tile, faction: Faction, diceRoll: number): boolean => {
-    // Basic adjacency check (Manhattan distance for simplicity in prototype, or pathfinding)
-    // For this prototype, we'll just check if it's within 'diceRoll' distance and walkable
-    // Real board game would be step-by-step, but for digital prototype, clicking destination is easier.
-    
-    // However, the prompt asks for "dice roll dictates how many steps".
-    // So we should probably highlight valid moves.
-    
-    if (!target.isWalkable) return false;
-    if (!target.allowedFactions.includes(faction)) return false;
+// Check if two positions are adjacent (including balcony connections)
+export const isAdjacent = (p1: Position, p2: Position, allowDiagonal: boolean = false): boolean => {
+    if (p1.balconyId === p2.balconyId) {
+        const dRow = Math.abs(p1.row - p2.row);
+        const dCol = Math.abs(p1.col - p2.col);
+        if (allowDiagonal) {
+            return dRow <= 1 && dCol <= 1 && (dRow + dCol > 0);
+        }
+        return (dRow + dCol === 1);
+    }
 
-    // Check if connected (same balcony or adjacent balcony connection)
-    // Simplified: Allow movement between balconies if they are adjacent in the 2x2 grid
+    // Balcony connections (2x2 grid)
     // 0 1
     // 2 3
-    const b1 = current.position.balconyId;
-    const b2 = target.position.balconyId;
+    // Connections happen at specific edges.
+    // Simplified: If they are logically adjacent balconies, check if they are on the connecting edge.
+    // For prototype feel, let's just allow movement between adjacent balconies if you are on the edge row/col.
     
-    const isAdjacentBalcony = 
-        (b1 === 0 && (b2 === 1 || b2 === 2)) ||
-        (b1 === 1 && (b2 === 0 || b2 === 3)) ||
-        (b1 === 2 && (b2 === 0 || b2 === 3)) ||
-        (b1 === 3 && (b2 === 1 || b2 === 2)) ||
-        (b1 === b2);
-
-    if (!isAdjacentBalcony) return false;
-
-    // Distance check (simplified Manhattan for grid)
-    // We need to account for balcony offsets to calculate true distance
-    // Balcony offsets: 
-    // 0: (0,0), 1: (0, 5), 2: (5, 0), 3: (5, 5)
+    // This logic is a bit complex for a quick prototype, let's simplify:
+    // If balconies are adjacent, and Manhattan distance of global coords is 1.
     
-    const getGlobalPos = (t: Tile) => {
-        const bRow = Math.floor(t.position.balconyId / 2); // 0 or 1
-        const bCol = t.position.balconyId % 2; // 0 or 1
+    const getGlobalPos = (p: Position) => {
+        const bRow = Math.floor(p.balconyId / 2);
+        const bCol = p.balconyId % 2;
         return {
-            x: bCol * BALCONY_SIZE + t.position.col,
-            y: bRow * BALCONY_SIZE + t.position.row
+            x: bCol * BALCONY_SIZE + p.col,
+            y: bRow * BALCONY_SIZE + p.row
         };
     };
 
-    const p1 = getGlobalPos(current);
-    const p2 = getGlobalPos(target);
+    const gp1 = getGlobalPos(p1);
+    const gp2 = getGlobalPos(p2);
     
-    const dist = Math.abs(p1.x - p2.x) + Math.abs(p1.y - p2.y);
+    const dist = Math.abs(gp1.x - gp2.x) + Math.abs(gp1.y - gp2.y);
+    // Note: This global pos logic puts balconies flush against each other.
+    // So (0, 4) in B0 is adjacent to (0, 0) in B1 if we consider them touching.
+    // B0 (row 0..4, col 0..4). B1 (row 0..4, col 0..4) -> Global B1 starts at x=5.
+    // B0(0,4) -> x=4. B1(0,0) -> x=5. Dist = 1. Correct.
     
-    return dist <= diceRoll;
+    if (allowDiagonal) {
+         const dx = Math.abs(gp1.x - gp2.x);
+         const dy = Math.abs(gp1.y - gp2.y);
+         return dx <= 1 && dy <= 1 && (dx + dy > 0);
+    }
+
+    return dist === 1;
+};
+
+export const isValidStep = (current: Tile, target: Tile, faction: Faction, allowDiagonal: boolean): boolean => {
+    if (!target.isWalkable) return false;
+    if (target.type === 'SPIKES' && faction === 'PIGEON') return false; // Spikes block pigeons
+    // if (!target.allowedFactions.includes(faction)) return false; // Strict faction paths disabled for fun flow
+
+    return isAdjacent(current.position, target.position, allowDiagonal);
+};
+
+export const getPushTarget = (tiles: Tile[], pigeonPos: Position): Tile | null => {
+    // Push logic: Try to push away from center or just random adjacent empty tile
+    // For Uncle ability.
+    // Simple implementation: Push to a random valid adjacent tile that isn't the current one.
+    // Ideally push "backwards" but "backwards" is relative.
+    // Let's push to a neighbor that increases distance from center of map?
+    // Or just any empty neighbor.
+    
+    const neighbors = tiles.filter(t => isAdjacent(pigeonPos, t.position, true) && t.isWalkable && t.type !== 'OBSTACLE');
+    if (neighbors.length === 0) return null;
+    return neighbors[Math.floor(Math.random() * neighbors.length)];
 };
